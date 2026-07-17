@@ -79,6 +79,9 @@ begin
   if length(trim(coalesce(p_name, ''))) = 0 then
     raise exception 'NAME_REQUIRED';
   end if;
+  if length(trim(p_name)) > 100 or length(trim(coalesce(p_phone, ''))) > 50 then
+    raise exception 'INPUT_TOO_LONG';
+  end if;
   select capacity into v_capacity from helfer_shifts where id = p_shift_id for update;
   if v_capacity is null then
     raise exception 'SHIFT_NOT_FOUND';
