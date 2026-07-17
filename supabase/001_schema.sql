@@ -30,19 +30,28 @@ create table helfer_signups (
   created_at timestamptz not null default now()
 );
 
+create index helfer_signups_shift_id_idx on helfer_signups (shift_id);
+
 alter table helfer_events enable row level security;
 alter table helfer_shifts enable row level security;
 alter table helfer_signups enable row level security;
 
 -- Admin-Check: genau der gemeinsame Vorstands-Account.
 create or replace function helfer_is_admin()
-returns boolean language sql stable as
+returns boolean language sql stable
+set search_path = ''
+as
 $$ select coalesce(auth.jwt() ->> 'email', '') = 'vorstand@rufv-limbach.de' $$;
 
--- Lesen: öffentlich.
+-- Lesen auf Events/Schichten: öffentlich.
 create policy "helfer_events_read" on helfer_events for select using (true);
 create policy "helfer_shifts_read" on helfer_shifts for select using (true);
-create policy "helfer_signups_read" on helfer_signups for select using (true);
+
+-- Signups direkt lesen: nur Admin. Signup-IDs und Telefonnummern dürfen
+-- nicht öffentlich leaken; die öffentliche Namensliste kommt über die
+-- RPC helfer_public_signups unten.
+create policy "helfer_signups_admin_read" on helfer_signups
+  for select using (helfer_is_admin());
 
 -- Schreiben auf Events/Schichten: nur Admin.
 create policy "helfer_events_admin" on helfer_events
@@ -85,7 +94,9 @@ begin
 end;
 $$;
 
--- Austragen: nur wer die (unerratbare) Signup-UUID kennt.
+-- Austragen: nur wer die Signup-UUID kennt. Die ist jetzt echt geheim –
+-- sie wird nur dem Ersteller von helfer_signup zurückgegeben und ist
+-- sonst nirgends lesbar.
 create or replace function helfer_cancel_signup(p_signup_id uuid)
 returns void
 language plpgsql
@@ -97,5 +108,21 @@ begin
 end;
 $$;
 
+-- Öffentliche Namensliste: ohne Signup-IDs und Telefonnummern.
+create or replace function helfer_public_signups(p_event_id uuid)
+returns table (shift_id uuid, name text, created_at timestamptz)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select su.shift_id, su.name, su.created_at
+  from helfer_signups su
+  join helfer_shifts sh on sh.id = su.shift_id
+  where sh.event_id = p_event_id
+  order by su.created_at
+$$;
+
 grant execute on function helfer_signup(uuid, text, text) to anon, authenticated;
 grant execute on function helfer_cancel_signup(uuid) to anon, authenticated;
+grant execute on function helfer_public_signups(uuid) to anon, authenticated;

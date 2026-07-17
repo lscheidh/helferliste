@@ -1,4 +1,14 @@
 -- Startdaten Turnier 2026. Datum/Zeiten im Admin-Bereich anpassbar.
+
+-- Schutz gegen doppeltes Einspielen.
+do $$
+begin
+  if exists (select 1 from helfer_events where name = 'Turnier 2026') then
+    raise exception 'Seed bereits eingespielt (Event "Turnier 2026" existiert).';
+  end if;
+end
+$$;
+
 insert into helfer_events (name, date_from, date_to, is_active)
 values ('Turnier 2026', '2026-09-04', '2026-09-06', true);
 
