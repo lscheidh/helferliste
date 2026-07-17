@@ -12,6 +12,18 @@ function isIsoDate(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s)
 }
 
+function suggestSortOrder(shifts: Shift[], day: string, area: string): number {
+  const sameDayArea = shifts.filter(s => s.day === day && s.area === area)
+  if (sameDayArea.length > 0) {
+    return Math.max(...sameDayArea.map(s => s.sort_order)) + 1
+  }
+  const sameDay = shifts.filter(s => s.day === day)
+  if (sameDay.length > 0) {
+    return Math.max(...sameDay.map(s => s.sort_order)) + 10
+  }
+  return 0
+}
+
 export default function AdminPanel() {
   const [events, setEvents] = useState<HelferEvent[]>([])
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -48,6 +60,7 @@ export default function AdminPanel() {
   useEffect(() => { loadShifts() }, [loadShifts])
 
   const selectedEvent = events.find(e => e.id === selectedEventId) ?? null
+  const existingAreas = [...new Set(shifts.map(s => s.area))].sort()
 
   async function setActive(eventId: string) {
     setError(null)
@@ -180,13 +193,55 @@ export default function AdminPanel() {
 
       <h2>{editingId ? 'Schicht bearbeiten' : 'Neue Schicht'}</h2>
       <form onSubmit={saveShift} className="admin-form">
-        <input type="date" value={draft.day} onChange={e => setDraft({ ...draft, day: e.target.value })} required />
-        <input value={draft.time_label} onChange={e => setDraft({ ...draft, time_label: e.target.value })} placeholder="Zeit (z. B. 10:00 – 12:30)" required />
-        <input value={draft.area} onChange={e => setDraft({ ...draft, area: e.target.value })} placeholder="Bereich (z. B. Getränke & Essen)" required />
-        <input value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="Aufgabe (z. B. Bonkasse)" required />
-        <input type="number" min={1} value={draft.capacity} onChange={e => setDraft({ ...draft, capacity: Number(e.target.value) })} placeholder="Benötigte Helfer" required />
-        <input value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="Hinweis (optional)" />
-        <input type="number" value={draft.sort_order} onChange={e => setDraft({ ...draft, sort_order: Number(e.target.value) })} placeholder="Sortierung" />
+        <label htmlFor="shift-day">Datum</label>
+        <input
+          id="shift-day"
+          type="date"
+          value={draft.day}
+          onChange={e => {
+            const day = e.target.value
+            setDraft(d => ({
+              ...d, day,
+              sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, day, d.area),
+            }))
+          }}
+          required
+        />
+
+        <label htmlFor="shift-time">Uhrzeit (Freitext, erscheint genauso auf der Liste)</label>
+        <input id="shift-time" value={draft.time_label} onChange={e => setDraft({ ...draft, time_label: e.target.value })} placeholder="z. B. 10:00 – 12:30" required />
+
+        <label htmlFor="shift-area">Bereich (Abschnitt auf der Liste – bei vorhandenem Bereich exakt gleich schreiben, sonst entsteht ein neuer)</label>
+        <input
+          id="shift-area"
+          list="area-options"
+          value={draft.area}
+          onChange={e => {
+            const area = e.target.value
+            setDraft(d => ({
+              ...d, area,
+              sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
+            }))
+          }}
+          placeholder="z. B. Getränke & Essen"
+          required
+        />
+        <datalist id="area-options">
+          {existingAreas.map(a => <option key={a} value={a} />)}
+        </datalist>
+
+        <label htmlFor="shift-title">Aufgabe</label>
+        <input id="shift-title" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="z. B. Bonkasse" required />
+
+        <label htmlFor="shift-capacity">Benötigte Helfer (Soll-Besetzung, kein Maximum)</label>
+        <input id="shift-capacity" type="number" min={1} value={draft.capacity} onChange={e => setDraft({ ...draft, capacity: Number(e.target.value) })} required />
+
+        <label htmlFor="shift-note">Hinweis (optional, erscheint in Klammern hinter der Aufgabe)</label>
+        <input id="shift-note" value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="z. B. nur Ausgabe" />
+
+        <label htmlFor="shift-sort">Reihenfolge auf der Liste (kleinere Zahl zuerst; wird bei Datum/Bereich automatisch vorgeschlagen, kann angepasst werden)</label>
+        <input id="shift-sort" type="number" value={draft.sort_order} onChange={e => setDraft({ ...draft, sort_order: Number(e.target.value) })} />
+
         <div className="admin-row">
           <button className="btn" type="submit">{editingId ? 'Speichern' : 'Anlegen'}</button>
           {editingId && (

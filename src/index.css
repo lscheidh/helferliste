@@ -43,6 +43,7 @@ h2 { font-size: 1.1rem; border-bottom: 2px solid #2e7d32; padding-bottom: 4px; m
   padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem;
 }
 .admin-form { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; background: #fff; padding: 12px; border-radius: 8px; border: 1px solid #ddd; }
+.admin-form label { font-size: 0.85rem; font-weight: 600; color: #444; margin-bottom: -4px; }
 .admin-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 .print-container { max-width: 800px; margin: 0 auto; padding: 16px; background: #fff; }
