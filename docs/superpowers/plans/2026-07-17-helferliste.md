@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-07-17-helferliste-design.md`
 
+> **Änderung nach Security-Review (2026-07-17, Task 2/3):** Die öffentliche SELECT-Policy auf `helfer_signups` hätte Signup-UUIDs und Telefonnummern für jeden lesbar gemacht (Massen-Austragen + Datenleck möglich). Fix im Schema: Tabelle nur noch für den Admin lesbar; öffentliche Namensliste über neue RPC `helfer_public_signups(p_event_id uuid)` → `(shift_id, name, created_at)`. Konsequenzen für die Frontend-Tasks 4–8: (1) `types.ts` bekommt zusätzlich `PublicSignup = Pick<Signup, 'shift_id' | 'name' | 'created_at'>`; die öffentliche Ansicht nutzt nur `PublicSignup`. (2) `grouping.ts` typisiert Signup-Parameter strukturell als `{ shift_id: string }[]`. (3) `storage.ts` speichert `{ signupId, shiftId }`-Paare statt nackter IDs (`getMySignups()`, `rememberSignup(signupId, shiftId)`, `forgetSignup(signupId)`). (4) `useHelferData` lädt Signups per `rpc('helfer_public_signups', { p_event_id })`. (5) `ShiftCard` zeigt "Meinen Eintrag austragen" auf Schicht-Ebene (Abgleich über gespeicherte `shiftId`), nicht mehr pro Namenszeile. (6) Admin lädt `helfer_signups` weiter direkt (Admin-Policy). Außerdem: Seed-Guard gegen Doppel-Einspielen, Index auf `helfer_signups(shift_id)`. Der Code in den Task-Abschnitten unten ist die Ursprungsfassung — bei Abweichung gilt diese Notiz.
+
 ---
 
 ## Dateistruktur (Zielbild)
