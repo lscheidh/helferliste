@@ -41,7 +41,7 @@ create or replace function helfer_is_admin()
 returns boolean language sql stable
 set search_path = ''
 as
-$$ select coalesce(auth.jwt() ->> 'email', '') = 'vorstand@rufv-limbach.de' $$;
+$$ select coalesce(auth.jwt() ->> 'email', '') = 'lukasscheidhauer@gmx.de' $$;
 
 -- Lesen auf Events/Schichten: öffentlich.
 create policy "helfer_events_read" on helfer_events for select using (true);

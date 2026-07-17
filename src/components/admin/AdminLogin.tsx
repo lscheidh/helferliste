@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState('vorstand@rufv-limbach.de')
+  const [email, setEmail] = useState('lukasscheidhauer@gmx.de')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

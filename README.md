@@ -4,7 +4,7 @@ Online-Helferliste für das jährliche Reitturnier. Mitglieder tragen sich ohne 
 in Schichten ein; der Vorstand pflegt Schichten unter `#/admin`.
 
 - Öffentliche Ansicht: `https://lscheidh.github.io/helferliste/`
-- Admin: `…/#/admin` (gemeinsamer Vorstands-Account)
+- Admin: `…/#/admin` (gemeinsamer Vorstands-Account, hinterlegt als `lukasscheidhauer@gmx.de` in `helfer_is_admin()`)
 - Druckansicht: `…/#/print`
 
 ## Entwicklung
