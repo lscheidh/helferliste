@@ -8,6 +8,10 @@ const EMPTY_SHIFT = {
 }
 type ShiftDraft = typeof EMPTY_SHIFT
 
+function isIsoDate(s: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)
+}
+
 export default function AdminPanel() {
   const [events, setEvents] = useState<HelferEvent[]>([])
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -55,11 +59,13 @@ export default function AdminPanel() {
   }
 
   async function createEvent() {
+    setError(null)
     const name = prompt('Name des Turniers (z. B. "Turnier 2027"):')
     if (!name) return
     const dateFrom = prompt('Erster Tag (JJJJ-MM-TT):')
     const dateTo = prompt('Letzter Tag (JJJJ-MM-TT):')
     if (!dateFrom || !dateTo) return
+    if (!isIsoDate(dateFrom) || !isIsoDate(dateTo)) { setError('Datum bitte im Format JJJJ-MM-TT angeben.'); return }
     const { error } = await supabase.from('helfer_events')
       .insert({ name, date_from: dateFrom, date_to: dateTo, is_active: false })
     if (error) { setError(error.message); return }
@@ -67,11 +73,13 @@ export default function AdminPanel() {
   }
 
   async function copyEvent() {
+    setError(null)
     if (!selectedEvent) return
     const name = prompt('Name des neuen Turniers:', selectedEvent.name.replace(/\d{4}/, m => String(Number(m) + 1)))
     if (!name) return
     const dateFrom = prompt('Erster Tag des neuen Turniers (JJJJ-MM-TT):')
     if (!dateFrom) return
+    if (!isIsoDate(dateFrom)) { setError('Datum bitte im Format JJJJ-MM-TT angeben.'); return }
     const offset = Math.round(
       (new Date(dateFrom + 'T00:00:00').getTime() - new Date(selectedEvent.date_from + 'T00:00:00').getTime()) / 86400000
     )
@@ -125,6 +133,7 @@ export default function AdminPanel() {
   }
 
   async function deleteShift(id: string) {
+    setError(null)
     if (!confirm('Schicht samt Eintragungen löschen?')) return
     const { error } = await supabase.from('helfer_shifts').delete().eq('id', id)
     if (error) { setError(error.message); return }
@@ -132,6 +141,7 @@ export default function AdminPanel() {
   }
 
   async function deleteSignup(id: string) {
+    setError(null)
     if (!confirm('Diesen Helfer-Eintrag entfernen?')) return
     const { error } = await supabase.from('helfer_signups').delete().eq('id', id)
     if (error) { setError(error.message); return }
@@ -150,7 +160,11 @@ export default function AdminPanel() {
 
       <h2>Turnier</h2>
       <div className="admin-row">
-        <select value={selectedEventId ?? ''} onChange={e => setSelectedEventId(e.target.value)}>
+        <select value={selectedEventId ?? ''} onChange={e => {
+          setSelectedEventId(e.target.value)
+          setEditingId(null)
+          setDraft(EMPTY_SHIFT)
+        }}>
           {events.map(ev => (
             <option key={ev.id} value={ev.id}>
               {ev.name}{ev.is_active ? ' (aktiv)' : ''}
