@@ -22,6 +22,7 @@ export default function ShiftCard({ shift, signups, mySignup, onChanged }: Props
 
   async function signUp(e: React.FormEvent) {
     e.preventDefault()
+    if (busy) return
     if (!name.trim()) return
     setBusy(true)
     setMessage(null)
@@ -46,11 +47,17 @@ export default function ShiftCard({ shift, signups, mySignup, onChanged }: Props
   }
 
   async function cancel() {
-    if (!mySignup) return
+    if (busy || !mySignup) return
     setBusy(true)
     const { error } = await supabase.rpc('helfer_cancel_signup', { p_signup_id: mySignup.signupId })
     setBusy(false)
-    if (!error) forgetSignup(mySignup.signupId)
+    if (error) {
+      setMessage('Austragen fehlgeschlagen – bitte später erneut versuchen.')
+      onChanged()
+      return
+    }
+    forgetSignup(mySignup.signupId)
+    setMessage(null)
     onChanged()
   }
 
