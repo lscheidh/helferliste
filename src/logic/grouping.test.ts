@@ -59,4 +59,8 @@ describe('addDays', () => {
   it('verschiebt ISO-Datum um n Tage', () => {
     expect(addDays('2025-09-05', 364)).toBe('2026-09-04')
   })
+  it('bleibt über Zeitumstellungen korrekt', () => {
+    expect(addDays('2026-03-27', 3)).toBe('2026-03-30')
+    expect(addDays('2026-10-23', 3)).toBe('2026-10-26')
+  })
 })
