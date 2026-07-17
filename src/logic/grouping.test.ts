@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { addDays, formatDay, groupByDay, progress, shiftStatus } from './grouping'
+import {
+  addDays, composeTimeLabel, eventDays, formatDay, groupByDay, parseTimeRange,
+  progress, shiftStatus, splitTimeLabel, timeRangesOverlap,
+} from './grouping'
 import type { Shift } from '../types'
 
 function mkShift(over: Partial<Shift>): Shift {
@@ -62,5 +65,66 @@ describe('addDays', () => {
   it('bleibt über Zeitumstellungen korrekt', () => {
     expect(addDays('2026-03-27', 3)).toBe('2026-03-30')
     expect(addDays('2026-10-23', 3)).toBe('2026-10-26')
+  })
+})
+
+describe('composeTimeLabel', () => {
+  it('fügt einen Bindestrich nur bei vorhandenem Ende ein', () => {
+    expect(composeTimeLabel('10:00', '12:30')).toBe('10:00 – 12:30')
+    expect(composeTimeLabel('11:15', '')).toBe('11:15')
+  })
+})
+
+describe('splitTimeLabel', () => {
+  it('zerlegt einen sauberen Zeitbereich', () => {
+    expect(splitTimeLabel('10:00 – 12:30')).toEqual({ begin: '10:00', end: '12:30', exact: true })
+  })
+  it('zerlegt einen einzelnen Zeitpunkt', () => {
+    expect(splitTimeLabel('11:15')).toEqual({ begin: '11:15', end: '', exact: true })
+  })
+  it('markiert unklaren Text als nicht exakt, behält aber den Anfang', () => {
+    expect(splitTimeLabel('15:30 – Ende (ca. 18:45)')).toEqual({ begin: '15:30', end: '', exact: false })
+  })
+})
+
+describe('parseTimeRange', () => {
+  it('parst einen Zeitbereich in Minuten seit Mitternacht', () => {
+    expect(parseTimeRange('10:00 – 12:30')).toEqual([600, 750])
+  })
+  it('parst einen einzelnen Zeitpunkt als Punkt-Intervall', () => {
+    expect(parseTimeRange('11:15')).toEqual([675, 675])
+  })
+  it('gibt null für unparsbaren Text zurück', () => {
+    expect(parseTimeRange('15:30 – Ende (ca. 18:45)')).toBeNull()
+  })
+})
+
+describe('timeRangesOverlap', () => {
+  it('erkennt eine echte Überschneidung zweier Bereiche', () => {
+    expect(timeRangesOverlap([600, 750], [700, 800])).toBe(true)
+  })
+  it('erlaubt nahtlos aneinandergrenzende Bereiche', () => {
+    expect(timeRangesOverlap([600, 750], [750, 800])).toBe(false)
+  })
+  it('erkennt identische Zeitpunkte als Konflikt', () => {
+    expect(timeRangesOverlap([675, 675], [675, 675])).toBe(true)
+  })
+  it('erlaubt unterschiedliche Zeitpunkte', () => {
+    expect(timeRangesOverlap([675, 675], [700, 700])).toBe(false)
+  })
+  it('erkennt einen Zeitpunkt innerhalb eines Bereichs', () => {
+    expect(timeRangesOverlap([700, 700], [600, 750])).toBe(true)
+  })
+  it('erlaubt einen Zeitpunkt genau auf der Bereichsgrenze', () => {
+    expect(timeRangesOverlap([600, 600], [600, 750])).toBe(false)
+  })
+})
+
+describe('eventDays', () => {
+  it('listet alle Tage zwischen zwei Daten inklusive', () => {
+    expect(eventDays('2026-09-04', '2026-09-06')).toEqual(['2026-09-04', '2026-09-05', '2026-09-06'])
+  })
+  it('gibt genau einen Tag zurück, wenn Anfang und Ende gleich sind', () => {
+    expect(eventDays('2026-09-04', '2026-09-04')).toEqual(['2026-09-04'])
   })
 })

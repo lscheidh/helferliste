@@ -62,3 +62,56 @@ export function addDays(isoDay: string, days: number): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
+
+export function composeTimeLabel(begin: string, end: string): string {
+  return end ? `${begin} – ${end}` : begin
+}
+
+export interface SplitTimeLabel {
+  begin: string
+  end: string
+  exact: boolean
+}
+
+export function splitTimeLabel(label: string): SplitTimeLabel {
+  const range = label.match(/^(\d{1,2}:\d{2})\s*(?:–|-)\s*(\d{1,2}:\d{2})$/)
+  if (range) return { begin: range[1], end: range[2], exact: true }
+  const single = label.match(/^(\d{1,2}:\d{2})$/)
+  if (single) return { begin: single[1], end: '', exact: true }
+  const leading = label.match(/^(\d{1,2}:\d{2})/)
+  return { begin: leading ? leading[1] : '', end: '', exact: false }
+}
+
+export function parseTimeRange(label: string): [number, number] | null {
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    return h * 60 + m
+  }
+  const range = label.match(/^(\d{1,2}:\d{2})\s*(?:–|-)\s*(\d{1,2}:\d{2})/)
+  if (range) return [toMinutes(range[1]), toMinutes(range[2])]
+  const single = label.match(/^(\d{1,2}:\d{2})$/)
+  if (single) {
+    const t = toMinutes(single[1])
+    return [t, t]
+  }
+  return null
+}
+
+export function timeRangesOverlap(a: [number, number], b: [number, number]): boolean {
+  const aIsPoint = a[0] === a[1]
+  const bIsPoint = b[0] === b[1]
+  if (aIsPoint && bIsPoint) return a[0] === b[0]
+  return a[0] < b[1] && b[0] < a[1]
+}
+
+export function eventDays(dateFrom: string, dateTo: string): string[] {
+  const days: string[] = []
+  let day = dateFrom
+  let guard = 0
+  while (day <= dateTo && guard < 60) {
+    days.push(day)
+    day = addDays(day, 1)
+    guard++
+  }
+  return days
+}

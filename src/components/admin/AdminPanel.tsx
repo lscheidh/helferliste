@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { addDays, formatDay, groupByDay } from '../../logic/grouping'
+import {
+  addDays, composeTimeLabel, eventDays, formatDay, groupByDay, parseTimeRange,
+  splitTimeLabel, timeRangesOverlap,
+} from '../../logic/grouping'
 import type { HelferEvent, Shift, Signup } from '../../types'
 
 const EMPTY_SHIFT = {
-  day: '', time_label: '', area: '', title: '', capacity: 1, note: '', sort_order: 0,
+  day: '', beginTime: '', endTime: '', area: '', title: '', capacity: 1, note: '', sort_order: 0,
 }
 type ShiftDraft = typeof EMPTY_SHIFT
 
@@ -31,6 +34,8 @@ export default function AdminPanel() {
   const [signups, setSignups] = useState<Signup[]>([])
   const [draft, setDraft] = useState<ShiftDraft>(EMPTY_SHIFT)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [newAreaMode, setNewAreaMode] = useState(false)
+  const [timeWarning, setTimeWarning] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const loadEvents = useCallback(async () => {
@@ -118,10 +123,26 @@ export default function AdminPanel() {
     e.preventDefault()
     if (!selectedEventId) return
     setError(null)
+
+    const timeLabel = composeTimeLabel(draft.beginTime, draft.endTime)
+    const newRange = parseTimeRange(timeLabel)
+    if (newRange) {
+      const conflict = shifts.find(s => {
+        if (editingId && s.id === editingId) return false
+        if (s.day !== draft.day || s.area !== draft.area) return false
+        const existingRange = parseTimeRange(s.time_label)
+        return existingRange !== null && timeRangesOverlap(newRange, existingRange)
+      })
+      if (conflict) {
+        setError(`Uhrzeit überschneidet sich im Bereich "${conflict.area}" mit "${conflict.title}" (${conflict.time_label}).`)
+        return
+      }
+    }
+
     const payload = {
       event_id: selectedEventId,
       day: draft.day,
-      time_label: draft.time_label,
+      time_label: timeLabel,
       area: draft.area,
       title: draft.title,
       capacity: Number(draft.capacity),
@@ -134,14 +155,29 @@ export default function AdminPanel() {
     if (error) { setError(error.message); return }
     setDraft(EMPTY_SHIFT)
     setEditingId(null)
+    setNewAreaMode(false)
+    setTimeWarning(null)
     loadShifts()
   }
 
   function startEdit(s: Shift) {
     setEditingId(s.id)
+    setNewAreaMode(false)
+    const { begin, end, exact } = splitTimeLabel(s.time_label)
+    setTimeWarning(exact ? null : `Ursprünglicher Zeittext "${s.time_label}" ließ sich nicht vollständig übernehmen – bitte Beginn/Ende prüfen.`)
     setDraft({
-      day: s.day, time_label: s.time_label, area: s.area, title: s.title,
+      day: s.day, beginTime: begin, endTime: end, area: s.area, title: s.title,
       capacity: s.capacity, note: s.note ?? '', sort_order: s.sort_order,
+    })
+  }
+
+  function duplicateShift(s: Shift) {
+    setEditingId(null)
+    setNewAreaMode(false)
+    setTimeWarning(null)
+    setDraft({
+      day: s.day, beginTime: '', endTime: '', area: s.area, title: s.title,
+      capacity: s.capacity, note: s.note ?? '', sort_order: suggestSortOrder(shifts, s.day, s.area),
     })
   }
 
@@ -177,6 +213,8 @@ export default function AdminPanel() {
           setSelectedEventId(e.target.value)
           setEditingId(null)
           setDraft(EMPTY_SHIFT)
+          setNewAreaMode(false)
+          setTimeWarning(null)
         }}>
           {events.map(ev => (
             <option key={ev.id} value={ev.id}>
@@ -193,10 +231,9 @@ export default function AdminPanel() {
 
       <h2>{editingId ? 'Schicht bearbeiten' : 'Neue Schicht'}</h2>
       <form onSubmit={saveShift} className="admin-form">
-        <label htmlFor="shift-day">Datum</label>
-        <input
+        <label htmlFor="shift-day">Tag</label>
+        <select
           id="shift-day"
-          type="date"
           value={draft.day}
           onChange={e => {
             const day = e.target.value
@@ -206,29 +243,64 @@ export default function AdminPanel() {
             }))
           }}
           required
-        />
+        >
+          <option value="">-- Tag wählen --</option>
+          {(selectedEvent ? eventDays(selectedEvent.date_from, selectedEvent.date_to) : []).map(day => (
+            <option key={day} value={day}>{formatDay(day)}</option>
+          ))}
+        </select>
 
-        <label htmlFor="shift-time">Uhrzeit (Freitext, erscheint genauso auf der Liste)</label>
-        <input id="shift-time" value={draft.time_label} onChange={e => setDraft({ ...draft, time_label: e.target.value })} placeholder="z. B. 10:00 – 12:30" required />
+        <label htmlFor="shift-begin">Beginn</label>
+        <input id="shift-begin" type="time" value={draft.beginTime} onChange={e => setDraft({ ...draft, beginTime: e.target.value })} required />
 
-        <label htmlFor="shift-area">Bereich (Abschnitt auf der Liste – bei vorhandenem Bereich exakt gleich schreiben, sonst entsteht ein neuer)</label>
-        <input
-          id="shift-area"
-          list="area-options"
-          value={draft.area}
-          onChange={e => {
-            const area = e.target.value
-            setDraft(d => ({
-              ...d, area,
-              sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
-            }))
-          }}
-          placeholder="z. B. Getränke & Essen"
-          required
-        />
-        <datalist id="area-options">
-          {existingAreas.map(a => <option key={a} value={a} />)}
-        </datalist>
+        <label htmlFor="shift-end">Ende (optional – leer lassen für einen einzelnen Zeitpunkt, z. B. eine Prüfung)</label>
+        <input id="shift-end" type="time" value={draft.endTime} onChange={e => setDraft({ ...draft, endTime: e.target.value })} />
+        {timeWarning && <p className="error">{timeWarning}</p>}
+
+        <label htmlFor="shift-area">Bereich (Abschnitt auf der Liste)</label>
+        {newAreaMode ? (
+          <input
+            id="shift-area"
+            value={draft.area}
+            onChange={e => {
+              const area = e.target.value
+              setDraft(d => ({
+                ...d, area,
+                sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
+              }))
+            }}
+            placeholder="Name des neuen Bereichs"
+            required
+            autoFocus
+          />
+        ) : (
+          <select
+            id="shift-area"
+            value={existingAreas.includes(draft.area) ? draft.area : ''}
+            onChange={e => {
+              if (e.target.value === '__new__') {
+                setNewAreaMode(true)
+                setDraft(d => ({ ...d, area: '' }))
+                return
+              }
+              const area = e.target.value
+              setDraft(d => ({
+                ...d, area,
+                sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
+              }))
+            }}
+            required
+          >
+            <option value="">-- Bereich wählen --</option>
+            {existingAreas.map(a => <option key={a} value={a}>{a}</option>)}
+            <option value="__new__">+ Neuer Bereich…</option>
+          </select>
+        )}
+        {newAreaMode && (
+          <button type="button" className="link" onClick={() => { setNewAreaMode(false); setDraft(d => ({ ...d, area: '' })) }}>
+            Bestehenden Bereich wählen
+          </button>
+        )}
 
         <label htmlFor="shift-title">Aufgabe</label>
         <input id="shift-title" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} placeholder="z. B. Bonkasse" required />
@@ -239,13 +311,13 @@ export default function AdminPanel() {
         <label htmlFor="shift-note">Hinweis (optional, erscheint in Klammern hinter der Aufgabe)</label>
         <input id="shift-note" value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="z. B. nur Ausgabe" />
 
-        <label htmlFor="shift-sort">Reihenfolge auf der Liste (kleinere Zahl zuerst; wird bei Datum/Bereich automatisch vorgeschlagen, kann angepasst werden)</label>
+        <label htmlFor="shift-sort">Reihenfolge auf der Liste (kleinere Zahl zuerst; wird bei Tag/Bereich automatisch vorgeschlagen, kann angepasst werden)</label>
         <input id="shift-sort" type="number" value={draft.sort_order} onChange={e => setDraft({ ...draft, sort_order: Number(e.target.value) })} />
 
         <div className="admin-row">
           <button className="btn" type="submit">{editingId ? 'Speichern' : 'Anlegen'}</button>
           {editingId && (
-            <button className="link" type="button" onClick={() => { setEditingId(null); setDraft(EMPTY_SHIFT) }}>
+            <button className="link" type="button" onClick={() => { setEditingId(null); setDraft(EMPTY_SHIFT); setNewAreaMode(false); setTimeWarning(null) }}>
               Abbrechen
             </button>
           )}
@@ -277,6 +349,7 @@ export default function AdminPanel() {
                     </ul>
                     <div className="admin-row">
                       <button className="link" onClick={() => startEdit(s)}>bearbeiten</button>
+                      <button className="link" onClick={() => duplicateShift(s)}>duplizieren</button>
                       <button className="link" onClick={() => deleteShift(s.id)}>löschen</button>
                     </div>
                   </div>
