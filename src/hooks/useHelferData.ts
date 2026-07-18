@@ -25,7 +25,7 @@ export function useHelferData() {
     const { data: sh, error: e2 } = await supabase
       .from('helfer_shifts').select('*')
       .eq('event_id', ev.id)
-      .order('day').order('sort_order')
+      .order('day')
     if (id !== reloadId.current) return
     if (e2) { setError(e2.message); setLoading(false); return }
     setShifts(sh ?? [])

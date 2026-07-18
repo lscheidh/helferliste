@@ -7,24 +7,12 @@ import {
 import type { HelferEvent, Shift, Signup } from '../../types'
 
 const EMPTY_SHIFT = {
-  day: '', beginTime: '', endTime: '', area: '', title: '', capacity: 1, note: '', sort_order: 0,
+  day: '', beginTime: '', endTime: '', area: '', title: '', capacity: 1, note: '',
 }
 type ShiftDraft = typeof EMPTY_SHIFT
 
 function isIsoDate(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s)
-}
-
-function suggestSortOrder(shifts: Shift[], day: string, area: string): number {
-  const sameDayArea = shifts.filter(s => s.day === day && s.area === area)
-  if (sameDayArea.length > 0) {
-    return Math.max(...sameDayArea.map(s => s.sort_order)) + 1
-  }
-  const sameDay = shifts.filter(s => s.day === day)
-  if (sameDay.length > 0) {
-    return Math.max(...sameDay.map(s => s.sort_order)) + 10
-  }
-  return 0
 }
 
 export default function AdminPanel() {
@@ -51,7 +39,7 @@ export default function AdminPanel() {
     if (!selectedEventId) { setShifts([]); setSignups([]); return }
     const { data: sh, error: e1 } = await supabase
       .from('helfer_shifts').select('*')
-      .eq('event_id', selectedEventId).order('day').order('sort_order')
+      .eq('event_id', selectedEventId).order('day')
     if (e1) { setError(e1.message); return }
     setShifts(sh ?? [])
     if (!sh || sh.length === 0) { setSignups([]); return }
@@ -147,7 +135,6 @@ export default function AdminPanel() {
       title: draft.title,
       capacity: Number(draft.capacity),
       note: draft.note.trim() || null,
-      sort_order: Number(draft.sort_order),
     }
     const { error } = editingId
       ? await supabase.from('helfer_shifts').update(payload).eq('id', editingId)
@@ -167,7 +154,7 @@ export default function AdminPanel() {
     setTimeWarning(exact ? null : `Ursprünglicher Zeittext "${s.time_label}" ließ sich nicht vollständig übernehmen – bitte Beginn/Ende prüfen.`)
     setDraft({
       day: s.day, beginTime: begin, endTime: end, area: s.area, title: s.title,
-      capacity: s.capacity, note: s.note ?? '', sort_order: s.sort_order,
+      capacity: s.capacity, note: s.note ?? '',
     })
   }
 
@@ -177,7 +164,7 @@ export default function AdminPanel() {
     setTimeWarning(null)
     setDraft({
       day: s.day, beginTime: '', endTime: '', area: s.area, title: s.title,
-      capacity: s.capacity, note: s.note ?? '', sort_order: suggestSortOrder(shifts, s.day, s.area),
+      capacity: s.capacity, note: s.note ?? '',
     })
   }
 
@@ -235,13 +222,7 @@ export default function AdminPanel() {
         <select
           id="shift-day"
           value={draft.day}
-          onChange={e => {
-            const day = e.target.value
-            setDraft(d => ({
-              ...d, day,
-              sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, day, d.area),
-            }))
-          }}
+          onChange={e => setDraft({ ...draft, day: e.target.value })}
           required
         >
           <option value="">-- Tag wählen --</option>
@@ -262,13 +243,7 @@ export default function AdminPanel() {
           <input
             id="shift-area"
             value={draft.area}
-            onChange={e => {
-              const area = e.target.value
-              setDraft(d => ({
-                ...d, area,
-                sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
-              }))
-            }}
+            onChange={e => setDraft({ ...draft, area: e.target.value })}
             placeholder="Name des neuen Bereichs"
             required
             autoFocus
@@ -283,11 +258,7 @@ export default function AdminPanel() {
                 setDraft(d => ({ ...d, area: '' }))
                 return
               }
-              const area = e.target.value
-              setDraft(d => ({
-                ...d, area,
-                sort_order: editingId ? d.sort_order : suggestSortOrder(shifts, d.day, area),
-              }))
+              setDraft({ ...draft, area: e.target.value })
             }}
             required
           >
@@ -310,9 +281,6 @@ export default function AdminPanel() {
 
         <label htmlFor="shift-note">Hinweis (optional, erscheint in Klammern hinter der Aufgabe)</label>
         <input id="shift-note" value={draft.note} onChange={e => setDraft({ ...draft, note: e.target.value })} placeholder="z. B. nur Ausgabe" />
-
-        <label htmlFor="shift-sort">Reihenfolge auf der Liste (kleinere Zahl zuerst; wird bei Tag/Bereich automatisch vorgeschlagen, kann angepasst werden)</label>
-        <input id="shift-sort" type="number" value={draft.sort_order} onChange={e => setDraft({ ...draft, sort_order: Number(e.target.value) })} />
 
         <div className="admin-row">
           <button className="btn" type="submit">{editingId ? 'Speichern' : 'Anlegen'}</button>

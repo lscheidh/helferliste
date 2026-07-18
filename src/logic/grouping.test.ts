@@ -26,17 +26,40 @@ describe('shiftStatus', () => {
 })
 
 describe('groupByDay', () => {
-  it('gruppiert nach Tag und Bereich in Eingabereihenfolge', () => {
+  it('sortiert Tage chronologisch, unabhängig von der Eingabereihenfolge', () => {
     const shifts = [
-      mkShift({ id: 'a', day: '2026-09-04', area: 'Getränke & Essen' }),
-      mkShift({ id: 'b', day: '2026-09-04', area: 'Parcoursdienst' }),
-      mkShift({ id: 'c', day: '2026-09-05', area: 'Getränke & Essen' }),
-      mkShift({ id: 'd', day: '2026-09-04', area: 'Getränke & Essen' }),
+      mkShift({ id: 'b', day: '2026-09-05' }),
+      mkShift({ id: 'a', day: '2026-09-04' }),
+    ]
+    expect(groupByDay(shifts).map(d => d.day)).toEqual(['2026-09-04', '2026-09-05'])
+  })
+
+  it('sortiert Schichten innerhalb eines Bereichs nach Beginnzeit', () => {
+    const shifts = [
+      mkShift({ id: 'spaet', time_label: '13:00 – 15:30' }),
+      mkShift({ id: 'frueh', time_label: '10:00 – 13:00' }),
+      mkShift({ id: 'mittel', time_label: '11:00' }),
     ]
     const days = groupByDay(shifts)
-    expect(days.map(d => d.day)).toEqual(['2026-09-04', '2026-09-05'])
-    expect(days[0].areas.map(a => a.area)).toEqual(['Getränke & Essen', 'Parcoursdienst'])
-    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['a', 'd'])
+    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['frueh', 'mittel', 'spaet'])
+  })
+
+  it('sortiert Bereiche nach der frühesten Schicht im Bereich', () => {
+    const shifts = [
+      mkShift({ id: 's1', area: 'Schreiber & Leser', time_label: '11:15' }),
+      mkShift({ id: 'g1', area: 'Getränke & Essen', time_label: '10:00 – 13:00' }),
+    ]
+    const days = groupByDay(shifts)
+    expect(days[0].areas.map(a => a.area)).toEqual(['Getränke & Essen', 'Schreiber & Leser'])
+  })
+
+  it('schiebt Schichten mit nicht auswertbarer Beginnzeit ans Ende', () => {
+    const shifts = [
+      mkShift({ id: 'unklar', time_label: 'Umbau zwischen den Prüfungen' }),
+      mkShift({ id: 'klar', time_label: '10:00' }),
+    ]
+    const days = groupByDay(shifts)
+    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['klar', 'unklar'])
   })
 })
 

@@ -21,22 +21,31 @@ export interface DayGroup {
   areas: { area: string; shifts: Shift[] }[]
 }
 
+function shiftStartMinutes(shift: Shift): number {
+  const { begin } = splitTimeLabel(shift.time_label)
+  if (!begin) return Infinity
+  const [h, m] = begin.split(':').map(Number)
+  return h * 60 + m
+}
+
 export function groupByDay(shifts: Shift[]): DayGroup[] {
-  const days: DayGroup[] = []
+  const byDay = new Map<string, Map<string, Shift[]>>()
   for (const shift of shifts) {
-    let d = days.find(x => x.day === shift.day)
-    if (!d) {
-      d = { day: shift.day, areas: [] }
-      days.push(d)
-    }
-    let a = d.areas.find(x => x.area === shift.area)
-    if (!a) {
-      a = { area: shift.area, shifts: [] }
-      d.areas.push(a)
-    }
-    a.shifts.push(shift)
+    if (!byDay.has(shift.day)) byDay.set(shift.day, new Map())
+    const byArea = byDay.get(shift.day)!
+    if (!byArea.has(shift.area)) byArea.set(shift.area, [])
+    byArea.get(shift.area)!.push(shift)
   }
-  return days
+
+  return [...byDay.keys()].sort().map(day => {
+    const byArea = byDay.get(day)!
+    const areas = [...byArea.entries()].map(([area, areaShifts]) => ({
+      area,
+      shifts: [...areaShifts].sort((a, b) => shiftStartMinutes(a) - shiftStartMinutes(b)),
+    }))
+    areas.sort((a, b) => Math.min(...a.shifts.map(shiftStartMinutes)) - Math.min(...b.shifts.map(shiftStartMinutes)))
+    return { day, areas }
+  })
 }
 
 export function progress(shifts: Shift[], signups: HasShiftId[]): { taken: number; total: number } {
