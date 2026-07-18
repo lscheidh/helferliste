@@ -38,6 +38,7 @@ h2 { font-size: 1.1rem; border-bottom: 2px solid #2e7d32; padding-bottom: 4px; m
 .btn:disabled { opacity: 0.5; }
 .btn.danger { background: #b71c1c; }
 .link { background: none; border: none; color: #1565c0; cursor: pointer; padding: 0 6px; font-size: 0.9rem; }
+.link:disabled { opacity: 0.3; cursor: default; }
 .signup-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .signup-form input, .admin-form input, .admin-form select {
   padding: 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem;

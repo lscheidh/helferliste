@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addDays, composeTimeLabel, eventDays, findTimeConflict, formatDay, groupByDay, parseTimeRange,
-  progress, shiftStatus, splitTimeLabel, timeRangesOverlap,
+  addDays, composeTimeLabel, computeInsertIndex, eventDays, findTimeConflict, formatDay, groupByDay,
+  parseTimeRange, progress, shiftStatus, splitTimeLabel, timeRangesOverlap,
 } from './grouping'
 import type { Shift } from '../types'
 
@@ -26,40 +26,49 @@ describe('shiftStatus', () => {
 })
 
 describe('groupByDay', () => {
-  it('sortiert Tage chronologisch, unabhängig von der Eingabereihenfolge', () => {
+  it('gruppiert nach Tag und Bereich in Eingabereihenfolge', () => {
     const shifts = [
-      mkShift({ id: 'b', day: '2026-09-05' }),
-      mkShift({ id: 'a', day: '2026-09-04' }),
-    ]
-    expect(groupByDay(shifts).map(d => d.day)).toEqual(['2026-09-04', '2026-09-05'])
-  })
-
-  it('sortiert Schichten innerhalb eines Bereichs nach Beginnzeit', () => {
-    const shifts = [
-      mkShift({ id: 'spaet', time_label: '13:00 – 15:30' }),
-      mkShift({ id: 'frueh', time_label: '10:00 – 13:00' }),
-      mkShift({ id: 'mittel', time_label: '11:00' }),
+      mkShift({ id: 'a', day: '2026-09-04', area: 'Getränke & Essen' }),
+      mkShift({ id: 'b', day: '2026-09-04', area: 'Parcoursdienst' }),
+      mkShift({ id: 'c', day: '2026-09-05', area: 'Getränke & Essen' }),
+      mkShift({ id: 'd', day: '2026-09-04', area: 'Getränke & Essen' }),
     ]
     const days = groupByDay(shifts)
-    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['frueh', 'mittel', 'spaet'])
+    expect(days.map(d => d.day)).toEqual(['2026-09-04', '2026-09-05'])
+    expect(days[0].areas.map(a => a.area)).toEqual(['Getränke & Essen', 'Parcoursdienst'])
+    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['a', 'd'])
+  })
+})
+
+describe('computeInsertIndex', () => {
+  it('fügt in eine leere Liste am Anfang ein', () => {
+    expect(computeInsertIndex([], { area: 'X', time_label: '10:00' })).toBe(0)
   })
 
-  it('sortiert Bereiche nach der frühesten Schicht im Bereich', () => {
-    const shifts = [
-      mkShift({ id: 's1', area: 'Schreiber & Leser', time_label: '11:15' }),
-      mkShift({ id: 'g1', area: 'Getränke & Essen', time_label: '10:00 – 13:00' }),
+  it('fügt innerhalb eines bestehenden Bereichs an der richtigen Zeitposition ein', () => {
+    const existing = [
+      { area: 'Getränke & Essen', time_label: '10:00 – 13:00' },
+      { area: 'Getränke & Essen', time_label: '13:00 – 15:30' },
     ]
-    const days = groupByDay(shifts)
-    expect(days[0].areas.map(a => a.area)).toEqual(['Getränke & Essen', 'Schreiber & Leser'])
+    expect(computeInsertIndex(existing, { area: 'Getränke & Essen', time_label: '11:00 – 12:00' })).toBe(1)
   })
 
-  it('schiebt Schichten mit nicht auswertbarer Beginnzeit ans Ende', () => {
-    const shifts = [
-      mkShift({ id: 'unklar', time_label: 'Umbau zwischen den Prüfungen' }),
-      mkShift({ id: 'klar', time_label: '10:00' }),
+  it('hängt ans Ende eines Bereichs an, wenn die neue Zeit am spätesten ist', () => {
+    const existing = [{ area: 'Getränke & Essen', time_label: '10:00 – 13:00' }]
+    expect(computeInsertIndex(existing, { area: 'Getränke & Essen', time_label: '15:00 – 17:00' })).toBe(1)
+  })
+
+  it('fügt einen neuen Bereich chronologisch zwischen bestehenden Bereichs-Blöcken ein', () => {
+    const existing = [
+      { area: 'Getränke & Essen', time_label: '10:00 – 13:00' },
+      { area: 'Schreiber & Leser', time_label: '17:00' },
     ]
-    const days = groupByDay(shifts)
-    expect(days[0].areas[0].shifts.map(s => s.id)).toEqual(['klar', 'unklar'])
+    expect(computeInsertIndex(existing, { area: 'Parcoursdienst', time_label: '14:00' })).toBe(1)
+  })
+
+  it('hängt einen neuen, später startenden Bereich ans Ende an', () => {
+    const existing = [{ area: 'Getränke & Essen', time_label: '10:00 – 13:00' }]
+    expect(computeInsertIndex(existing, { area: 'Parcoursdienst', time_label: '15:00' })).toBe(1)
   })
 })
 

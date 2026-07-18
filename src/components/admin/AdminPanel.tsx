@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
-  addDays, composeTimeLabel, eventDays, findTimeConflict, formatDay, groupByDay, parseTimeRange,
-  splitTimeLabel,
+  addDays, composeTimeLabel, computeInsertIndex, eventDays, findTimeConflict, formatDay, groupByDay,
+  parseTimeRange, splitTimeLabel,
 } from '../../logic/grouping'
 import type { HelferEvent, Shift, Signup } from '../../types'
 
@@ -39,7 +39,7 @@ export default function AdminPanel() {
     if (!selectedEventId) { setShifts([]); setSignups([]); return }
     const { data: sh, error: e1 } = await supabase
       .from('helfer_shifts').select('*')
-      .eq('event_id', selectedEventId).order('day')
+      .eq('event_id', selectedEventId).order('day').order('sort_order')
     if (e1) { setError(e1.message); return }
     setShifts(sh ?? [])
     if (!sh || sh.length === 0) { setSignups([]); return }
@@ -107,6 +107,13 @@ export default function AdminPanel() {
     loadEvents()
   }
 
+  async function persistOrder(orderedShifts: { id: string; sort_order: number }[]) {
+    const updates = orderedShifts
+      .map((s, index) => ({ id: s.id, from: s.sort_order, to: index }))
+      .filter(u => u.from !== u.to)
+    await Promise.all(updates.map(u => supabase.from('helfer_shifts').update({ sort_order: u.to }).eq('id', u.id)))
+  }
+
   async function saveShift(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedEventId) return
@@ -135,14 +142,55 @@ export default function AdminPanel() {
       capacity: Number(draft.capacity),
       note: draft.note.trim() || null,
     }
-    const { error } = editingId
-      ? await supabase.from('helfer_shifts').update(payload).eq('id', editingId)
-      : await supabase.from('helfer_shifts').insert(payload)
-    if (error) { setError(error.message); return }
+
+    const original = editingId ? shifts.find(s => s.id === editingId) ?? null : null
+    const needsReposition = !editingId
+      || !original || original.day !== draft.day || original.area !== draft.area || original.time_label !== timeLabel
+
+    if (editingId) {
+      const { error } = await supabase.from('helfer_shifts').update(payload).eq('id', editingId)
+      if (error) { setError(error.message); return }
+      if (needsReposition) {
+        const dayShifts = shifts.filter(s => s.day === draft.day && s.id !== editingId)
+        const insertIndex = computeInsertIndex(dayShifts, { area: draft.area, time_label: timeLabel })
+        const finalOrder: { id: string; sort_order: number }[] = [
+          ...dayShifts.slice(0, insertIndex),
+          { id: editingId, sort_order: -1 },
+          ...dayShifts.slice(insertIndex),
+        ]
+        await persistOrder(finalOrder)
+      }
+    } else {
+      const dayShifts = shifts.filter(s => s.day === draft.day)
+      const insertIndex = computeInsertIndex(dayShifts, { area: draft.area, time_label: timeLabel })
+      const { data: created, error } = await supabase.from('helfer_shifts').insert(payload).select().single()
+      if (error || !created) { setError(error?.message ?? 'Anlegen fehlgeschlagen'); return }
+      const finalOrder: { id: string; sort_order: number }[] = [
+        ...dayShifts.slice(0, insertIndex),
+        { id: created.id, sort_order: -1 },
+        ...dayShifts.slice(insertIndex),
+      ]
+      await persistOrder(finalOrder)
+    }
+
     setDraft(EMPTY_SHIFT)
     setEditingId(null)
     setNewAreaMode(false)
     setTimeWarning(null)
+    loadShifts()
+  }
+
+  async function moveShift(s: Shift, direction: 'up' | 'down') {
+    setError(null)
+    const areaShifts = shifts.filter(x => x.day === s.day && x.area === s.area)
+    const index = areaShifts.findIndex(x => x.id === s.id)
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= areaShifts.length) return
+    const other = areaShifts[targetIndex]
+    const { error: e1 } = await supabase.from('helfer_shifts').update({ sort_order: other.sort_order }).eq('id', s.id)
+    if (e1) { setError(e1.message); return }
+    const { error: e2 } = await supabase.from('helfer_shifts').update({ sort_order: s.sort_order }).eq('id', other.id)
+    if (e2) { setError(e2.message); return }
     loadShifts()
   }
 
@@ -298,7 +346,7 @@ export default function AdminPanel() {
           {d.areas.map(a => (
             <div key={a.area}>
               <strong>{a.area}</strong>
-              {a.shifts.map(s => {
+              {a.shifts.map((s, i) => {
                 const su = signups.filter(x => x.shift_id === s.id)
                 return (
                   <div key={s.id} className="shift">
@@ -315,6 +363,8 @@ export default function AdminPanel() {
                       ))}
                     </ul>
                     <div className="admin-row">
+                      <button className="link" disabled={i === 0} onClick={() => moveShift(s, 'up')} title="Nach oben">▲</button>
+                      <button className="link" disabled={i === a.shifts.length - 1} onClick={() => moveShift(s, 'down')} title="Nach unten">▼</button>
                       <button className="link" onClick={() => startEdit(s)}>bearbeiten</button>
                       <button className="link" onClick={() => duplicateShift(s)}>duplizieren</button>
                       <button className="link" onClick={() => deleteShift(s.id)}>löschen</button>

@@ -21,31 +21,22 @@ export interface DayGroup {
   areas: { area: string; shifts: Shift[] }[]
 }
 
-function shiftStartMinutes(shift: Shift): number {
-  const { begin } = splitTimeLabel(shift.time_label)
-  if (!begin) return Infinity
-  const [h, m] = begin.split(':').map(Number)
-  return h * 60 + m
-}
-
 export function groupByDay(shifts: Shift[]): DayGroup[] {
-  const byDay = new Map<string, Map<string, Shift[]>>()
+  const days: DayGroup[] = []
   for (const shift of shifts) {
-    if (!byDay.has(shift.day)) byDay.set(shift.day, new Map())
-    const byArea = byDay.get(shift.day)!
-    if (!byArea.has(shift.area)) byArea.set(shift.area, [])
-    byArea.get(shift.area)!.push(shift)
+    let d = days.find(x => x.day === shift.day)
+    if (!d) {
+      d = { day: shift.day, areas: [] }
+      days.push(d)
+    }
+    let a = d.areas.find(x => x.area === shift.area)
+    if (!a) {
+      a = { area: shift.area, shifts: [] }
+      d.areas.push(a)
+    }
+    a.shifts.push(shift)
   }
-
-  return [...byDay.keys()].sort().map(day => {
-    const byArea = byDay.get(day)!
-    const areas = [...byArea.entries()].map(([area, areaShifts]) => ({
-      area,
-      shifts: [...areaShifts].sort((a, b) => shiftStartMinutes(a) - shiftStartMinutes(b)),
-    }))
-    areas.sort((a, b) => Math.min(...a.shifts.map(shiftStartMinutes)) - Math.min(...b.shifts.map(shiftStartMinutes)))
-    return { day, areas }
-  })
+  return days
 }
 
 export function progress(shifts: Shift[], signups: HasShiftId[]): { taken: number; total: number } {
@@ -128,6 +119,60 @@ export function findTimeConflict(shifts: Shift[], target: TimeConflictTarget, ex
     if (existingRange && timeRangesOverlap(target.range, existingRange)) return s
   }
   return null
+}
+
+function startMinutesOfLabel(label: string): number {
+  const { begin } = splitTimeLabel(label)
+  if (!begin) return Infinity
+  const [h, m] = begin.split(':').map(Number)
+  return h * 60 + m
+}
+
+interface AreaBlock {
+  area: string
+  startIndex: number
+  endIndex: number
+}
+
+function areaBlocks(shifts: { area: string }[]): AreaBlock[] {
+  const blocks: AreaBlock[] = []
+  for (let i = 0; i < shifts.length; i++) {
+    const area = shifts[i].area
+    const last = blocks[blocks.length - 1]
+    if (last && last.area === area) {
+      last.endIndex = i
+    } else {
+      blocks.push({ area, startIndex: i, endIndex: i })
+    }
+  }
+  return blocks
+}
+
+/**
+ * Findet die Einfügeposition für eine neue/verschobene Schicht innerhalb eines
+ * Tages: an der zeitlich passenden Stelle im eigenen Bereich, bzw. für einen
+ * neuen Bereich zwischen den bestehenden Bereichs-Blöcken nach deren Startzeit.
+ * `orderedShifts` muss bereits in der aktuellen Anzeigereihenfolge sein.
+ */
+export function computeInsertIndex(
+  orderedShifts: { area: string; time_label: string }[],
+  newShift: { area: string; time_label: string },
+): number {
+  const newStart = startMinutesOfLabel(newShift.time_label)
+  const blocks = areaBlocks(orderedShifts)
+  const sameAreaBlock = blocks.find(b => b.area === newShift.area)
+
+  if (sameAreaBlock) {
+    for (let i = sameAreaBlock.startIndex; i <= sameAreaBlock.endIndex; i++) {
+      if (startMinutesOfLabel(orderedShifts[i].time_label) > newStart) return i
+    }
+    return sameAreaBlock.endIndex + 1
+  }
+
+  for (const b of blocks) {
+    if (startMinutesOfLabel(orderedShifts[b.startIndex].time_label) > newStart) return b.startIndex
+  }
+  return orderedShifts.length
 }
 
 export function eventDays(dateFrom: string, dateTo: string): string[] {
