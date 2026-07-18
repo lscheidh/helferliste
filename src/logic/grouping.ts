@@ -113,6 +113,23 @@ export function timeRangesOverlap(a: [number, number], b: [number, number]): boo
   return a[0] < b[1] && b[0] < a[1]
 }
 
+export interface TimeConflictTarget {
+  day: string
+  area: string
+  title: string
+  range: [number, number]
+}
+
+export function findTimeConflict(shifts: Shift[], target: TimeConflictTarget, excludeId?: string): Shift | null {
+  for (const s of shifts) {
+    if (excludeId && s.id === excludeId) continue
+    if (s.day !== target.day || s.area !== target.area || s.title !== target.title) continue
+    const existingRange = parseTimeRange(s.time_label)
+    if (existingRange && timeRangesOverlap(target.range, existingRange)) return s
+  }
+  return null
+}
+
 export function eventDays(dateFrom: string, dateTo: string): string[] {
   const days: string[] = []
   let day = dateFrom

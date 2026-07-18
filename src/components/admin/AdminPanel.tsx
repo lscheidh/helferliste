@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
-  addDays, composeTimeLabel, eventDays, formatDay, groupByDay, parseTimeRange,
-  splitTimeLabel, timeRangesOverlap,
+  addDays, composeTimeLabel, eventDays, findTimeConflict, formatDay, groupByDay, parseTimeRange,
+  splitTimeLabel,
 } from '../../logic/grouping'
 import type { HelferEvent, Shift, Signup } from '../../types'
 
@@ -115,14 +115,13 @@ export default function AdminPanel() {
     const timeLabel = composeTimeLabel(draft.beginTime, draft.endTime)
     const newRange = parseTimeRange(timeLabel)
     if (newRange) {
-      const conflict = shifts.find(s => {
-        if (editingId && s.id === editingId) return false
-        if (s.day !== draft.day || s.area !== draft.area) return false
-        const existingRange = parseTimeRange(s.time_label)
-        return existingRange !== null && timeRangesOverlap(newRange, existingRange)
-      })
+      const conflict = findTimeConflict(
+        shifts,
+        { day: draft.day, area: draft.area, title: draft.title, range: newRange },
+        editingId ?? undefined
+      )
       if (conflict) {
-        setError(`Uhrzeit überschneidet sich im Bereich "${conflict.area}" mit "${conflict.title}" (${conflict.time_label}).`)
+        setError(`Für "${draft.title}" gibt es an diesem Tag im Bereich "${draft.area}" bereits eine überschneidende Uhrzeit (${conflict.time_label}).`)
         return
       }
     }

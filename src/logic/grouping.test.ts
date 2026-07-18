@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addDays, composeTimeLabel, eventDays, formatDay, groupByDay, parseTimeRange,
+  addDays, composeTimeLabel, eventDays, findTimeConflict, formatDay, groupByDay, parseTimeRange,
   progress, shiftStatus, splitTimeLabel, timeRangesOverlap,
 } from './grouping'
 import type { Shift } from '../types'
@@ -140,6 +140,33 @@ describe('timeRangesOverlap', () => {
   })
   it('erlaubt einen Zeitpunkt genau auf der Bereichsgrenze', () => {
     expect(timeRangesOverlap([600, 600], [600, 750])).toBe(false)
+  })
+})
+
+describe('findTimeConflict', () => {
+  const base = [
+    mkShift({ id: 'a', day: '2026-09-04', area: 'Getränke & Essen', title: 'Getränke', time_label: '10:00 – 13:00' }),
+    mkShift({ id: 'b', day: '2026-09-04', area: 'Getränke & Essen', title: 'Spülmobil', time_label: '10:00 – 13:00' }),
+  ]
+
+  it('erlaubt unterschiedliche Aufgaben im selben Bereich zur selben Zeit', () => {
+    const conflict = findTimeConflict(base, { day: '2026-09-04', area: 'Getränke & Essen', title: 'Kuchen', range: [600, 780] })
+    expect(conflict).toBeNull()
+  })
+
+  it('erkennt eine echte Überschneidung derselben Aufgabe', () => {
+    const conflict = findTimeConflict(base, { day: '2026-09-04', area: 'Getränke & Essen', title: 'Getränke', range: [660, 720] })
+    expect(conflict?.id).toBe('a')
+  })
+
+  it('ignoriert die eigene Schicht beim Bearbeiten', () => {
+    const conflict = findTimeConflict(base, { day: '2026-09-04', area: 'Getränke & Essen', title: 'Getränke', range: [600, 780] }, 'a')
+    expect(conflict).toBeNull()
+  })
+
+  it('ignoriert andere Tage und Bereiche', () => {
+    expect(findTimeConflict(base, { day: '2026-09-05', area: 'Getränke & Essen', title: 'Getränke', range: [600, 780] })).toBeNull()
+    expect(findTimeConflict(base, { day: '2026-09-04', area: 'Parcoursdienst', title: 'Getränke', range: [600, 780] })).toBeNull()
   })
 })
 
